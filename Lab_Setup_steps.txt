@@ -1,0 +1,363 @@
+Hadoop installation 
+
+sudo apt-get update
+sudo apt-get install openjdk-8-jre
+sudo apt-get install openjdk-8-jdk
+sudo apt-get install ssh
+sudo apt-get install rsync
+sudo apt-get install vim
+sudo apt-get install ifconfig
+sudo apt-get install python
+sudo apt-get install curl
+
+
+
+sudo addgroup hadoop
+sudo adduser --ingroup hadoop hduser
+sudo adduser hduser sudo
+su - hduser
+
+
+ssh-keygen -t rsa -P ""
+cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
+ssh localhost
+
+
+
+sudo vi /etc/sysctl.conf
+#disable ipv6
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+
+cd /usr/local
+sudo wget http://ftp.heanet.ie/mirrors/www.apache.org/dist/hadoop/common/stable/hadoop-2.9.2.tar.gz
+sudo tar xzf hadoop-2.9.2.tar.gz
+sudo ln -s hadoop-2.9.2 hadoop
+sudo chown -R hduser:hadoop hadoop-2.9.2
+
+
+
+cd /usr/local/hadoop/etc/hadoop
+cp mapred-site.xml.template mapred-site.xml
+
+vi hadoop-env.sh
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+
+vi mapred-site.xml
+<configuration>
+<property>
+<name>mapreduce.jobtracker.address</name>
+<value>local</value>
+</property>
+</configuration>
+
+mkdir ~/tmp
+mkdir ~/hdfs
+chmod 750 ~/hdfs
+
+
+vi core-site.xml
+<configuration>
+<property>
+<name>hadoop.tmp.dir</name>
+<value>/home/hduser/tmp</value>
+</property>
+<property >
+<name>fs.defaultFS</name>
+<value>hdfs://localhost:54310</value>
+</property>
+</configuration>
+
+
+
+
+vi hdfs-site.xml
+<configuration>
+<property>
+<name>dfs.replication</name>
+<value>1</value>
+</property>
+<property>
+<name>dfs.datanode.data.dir</name>
+<value>/home/hduser/hdfs</value>
+</property>
+</configuration>
+
+
+
+
+cd /usr/local/hadoop
+bin/hdfs namenode -format
+sbin/start-dfs.sh
+sbin/start-yarn.sh
+jps
+
+
+Mapreduce sample word-count job test
+
+cd /tmp
+mkdir gutenberg
+cd gutenberg
+wget http://www.gutenberg.org/files/4300/4300-0.txt
+
+cd /usr/local/hadoop
+
+bin/hdfs dfs -mkdir /user
+bin/hdfs dfs -mkdir /user/hduser
+bin/hdfs dfs -mkdir /user/hduser/gutenberg
+
+bin/hdfs dfs -copyFromLocal /tmp/gutenberg/* /user/hduser/gutenberg
+
+bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.9.2.jar wordcount /user/hduser/gutenberg /user/hduser/gutenberg-output
+
+bin/hdfs dfs -ls /user/hduser/gutenberg-output
+
+mkdir /tmp/gutenberg-output
+
+bin/hdfs dfs -get /user/hduser/gutenberg-output/part-r-00000 /tmp/gutenberg-output
+
+cd /tmp/gutenberg-output
+
+
+
+Hbase installation 
+
+
+cd /usr/local
+sudo wget http://ftp.heanet.ie/mirrors/www.apache.org/dist/hbase/stable/hbase-1.4.8-bin.tar.gz
+sudo tar xzf hbase-1.4.8-bin.tar.gz
+sudo ln -s hbase-1.4.8 hbase
+
+
+sudo chown -R hduser:hadoop hbase-1.4.8
+
+
+sudo mkdir /usr/data	
+sudo mkdir /usr/data/hbase
+sudo chown -R hduser:hadoop /usr/data/hbase
+
+cd /usr/local/hbase/conf
+
+sudo vi hbase-site.xml
+<configuration>
+<property>
+<name>hbase.rootdir</name>
+<value>file:///usr/data/hbase</value>
+</property>
+</configuration>
+
+
+sudo vi hbase-env.sh
+
+#Java home
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+
+#Native lib 
+export LD_LIBRARY_PATH=/usr/local/hadoop/lib/native
+
+
+
+
+
+cd /usr/local/hbase
+
+bin/start-hbase.sh
+
+bin/hbase shell
+status
+create 'newtable', 'colfam1'
+create 'usertable', 'cf1'
+put 'newtable', 'row-1', 'colfam1:q1', 'val-1'
+put 'newtable', 'row-2', 'colfam1:q2', 'val-2'
+scan 'newtable'
+
+
+
+
+ HBase on Hdfs : 
+
+cd /usr/local/hadoop
+sbin/stop-dfs.sh
+sbin/stop-yarn.sh
+
+wait 30sec
+
+cd /usr/local/hbase
+bin/stop-hbase.sh
+
+jps
+
+**Wait 30sec**
+
+again put #jps and make sure all process closed if else kill it manually (kill -9 give pid)
+
+
+vi core-site.xml --- No changes
+
+cd /usr/local/hadoop/etc/hadoop
+vi hdfs-site.xml
+<configuration>
+<property>
+<name>dfs.replication</name>
+<value>1</value>
+</property>
+<property>
+<name>dfs.datanode.data.dir</name>
+<value>/home/hduser/hdfs/data</value>
+</property>
+<property>
+<name>dfs.namenode.data.dir</name>
+<value>/home/hduser/hdfs/name</value>
+</property>
+<property>
+<name>dfs.datanode.data.dir.perm</name>
+<value>755</value>
+</property>
+<property>
+<name>dfs.datanode.max.xcievers</name>
+<value>8192</value>
+</property>		
+</configuration>
+
+
+cd /usr/local/hbase/conf
+vi hbase-site.xml 
+
+<configuration>
+        <property>
+                <name>hbase.rootdir</name>
+                <value>hdfs://localhost:54310/hbase</value>
+        </property>
+		<property>
+		         <name>hbase.cluster.distributed</name>
+				 <value>true</value>
+		</property>
+		<property>
+			 	 <name>hbase.zookeeper.quorum</name>
+				 <value>localhost</value>
+		</property>
+		<property>
+				<name>dfs.replication</name>
+				<value>1</value>
+		</property>
+		<property>
+				<name>hbase.zookeeper.property.clientPort</name>
+				<value>2181</value>
+		</property>
+		<property>
+		         <name>hbase.zookeeper.property.dataDir</name>
+				 <value>/home/hduser/hbase/zookeeper</value>
+		</property>
+</configuration>
+
+
+
+hostname -i 
+<<Note down ip address starts with 192.168*****>> 
+
+hostname 
+<<Note down name of machine>> 
+
+
+sudo vi /etc/hosts
+<<add in last line  ip address and name>>
+eg: 192.168.*** x***-dsmprojb
+
+<<After editing this file just keep this putty session>>
+
+--------------------------
+<<Now open new putty session>>
+su - hduser
+cd /home/hduser
+sudo cp .bashrc .bashrc.bkp
+sudo vi .bashrc
+export HBASE_HOME=/usr/local/hbase
+export PATH=$PATH:$HBASE_HOME/bin
+
+<<After saving this file close this putty session>>
+-------------
+
+<<Continue below steps in old putty session>>
+cd /usr/local/hadoop
+sbin/start-dfs.sh
+sbin/start-yarn.sh
+jps
+
+wait 30sec 
+
+cd /usr/local/hbase
+bin/start-hbase.sh
+
+bin/hbase shell
+status
+create 'test', 'colfam1'
+
+Then, exit
+
+
+MongoDB installation 
+
+sudo apt-get update
+sudo apt-get install mongodb
+sudo service mongodb start
+sudo service mongodb status 
+
+
+YCSB setup: 
+
+su - hduser
+cd /home/hduser
+wget https://github.com/brianfrankcooper/YCSB/releases/download/0.15.0/ycsb-0.15.0.tar.gz
+
+
+sudo tar xzf ycsb-0.15.0.tar.gz
+sudo chown -R hduser:hadoop ycsb-0.15.0
+cd /home/hduser/ycsb-0.15.0
+
+
+mkdir output
+
+sudo -i
+cd /usr/local/
+curl -o testharness.tgz --location "https://drive.google.com/uc?export=download&id=1hp53oAcDeC2M1mJ8eMPaL_hDrcdDRMo0"
+tar xzf testharness.tgz
+
+sudo chown -R hduser:hadoop testharness
+
+
+su - hduser
+cd /usr/local/testharness
+vi opcounts.txt (#here by default two ops count will be there 1000 & 2000 edit according to your requirement) 
+
+vi runtest.sh
+
+<<In vi mode type :-  esc+: set number>>
+
+( Edit line no:14 YCSB_HOME=/home/hduser/ycsb-0.8.0  
+  -> YCSB_HOME=/home/hduser/ycsb-0.15.0 (changed version)
+  
+ Edit line no:73 columnfamily=family 
+  -> columnfamily=cf1 (changed columnname) )
+  
+  
+  vi testdbs.txt
+  mongodb (add mongodb by default hbase will  be there)
+
+  vi usertableClear.js
+ change YCSB -> as ycsb (from caps to small)
+
+ 
+=================================================================
+ Initiating benchmark test
+ 
+ su - hduser
+  cd /usr/local/testharness
+  ./runtest.sh your_file_name
+ 
+ 
+  output file can be seen here. 
+   cd /home/hduser/ycsb-0.15.0/output/
+   
+ =======================================================================
+
